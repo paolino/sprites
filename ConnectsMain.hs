@@ -1,7 +1,8 @@
-{-# LANGUAGE TypeFamilies, GeneralizedNewtypeDeriving, DataKinds, ViewPatterns #-}
+{-# LANGUAGE TypeFamilies, GeneralizedNewtypeDeriving, DataKinds, ViewPatterns,GADTs #-}
 import GL
 import OpenGlDigits
 import Control.Concurrent.STM
+import Control.Concurrent
 
 import Graphics.UI.Gtk hiding (Point,Signal, Object)
 import Graphics.UI.Gtk.OpenGL 
@@ -26,19 +27,22 @@ instance Monoid N where
 	mempty = N 1
 	mappend = (+)
 
-mb :: [N] -> N
-mb [] = mempty
-mb xs = N . maximum . map (\(N x) -> x) $ xs
+mb :: [N] -> Synth -> N
+mb [] _ = mempty
+
+mb xs (Pattern n ma) = N . (*z) . maximum . map (\(N x) -> x) $ xs where
+	z = sum . map floor . map (*128) $ M.elems ma
+
 type instance Signal Synth = N
 
-basePattern = Object 
+basePattern o = Object 
 		(M.singleton 0 (SInput (-0.1,0.5) (0.5,0.5) ["patternOut"]))
-		(M.singleton 0 (SOutput (1.1,0.5) (0.5,0.5) "patternOut" (mb,mempty)))
+		(M.singleton 0 (SOutput (1.1,0.5) (0.5,0.5) "patternOut" (mb,N o)))
 		(Pattern 3 $ M.fromList $ zip [0..2] $ repeat 0)
 
 baseProjection = Object 
 		(M.singleton 0 (SInput (-0.1,0.5) (0.5,0.5) ["patternOut"]))
-		(M.singleton 0 (SOutput (1.1,0.5) (0.5,0.5) "projectionOut" (mb,mempty)))
+		(M.singleton 0 (SOutput (1.1,0.5) (0.5,0.5) "projectionOut" (mb,N 3)))
 		(Projection 6 $ M.fromList $ zip [0..5] $ repeat 0)
 
 baseSynth n x = Object
@@ -53,7 +57,7 @@ baseBus n = Object
 
 baseViewer = Object 
 		(M.singleton 0 (SInput (-0.1,0.5) (0.5,0.5) ["projectionOut", "patternOut"]))
-		(M.singleton 0 (SOutput (1.1,0.5) (0.5,0.5) "viewerOut" (mb,mempty)))
+		(M.singleton 0 (SOutput (1.1,0.5) (0.5,0.5) "viewerOut" (mb,N 4)))
 		Viewer
 		
 scrollSynth :: ScrollDirection -> Point -> Synth -> STM Synth
@@ -92,16 +96,29 @@ setSynth _ x = return x
 
 graph :: Graph Synth
 graph = Graph (M.fromList $ 
-	[ (0,(Affine (0.5,0.5) (0.06,0.1),basePattern))
+	[ (0,(Affine (0.5,0.5) (0.06,0.1),basePattern 4))
 	, (1,(Affine (0.5,0.5) (0.12,0.1),baseProjection))
 	, (2, (Affine (0.5,0.5) (0.1,0.1),baseSynth 5 "SAMPLER")) 
 	, (3,(Affine (0.5,0.5) (0.06,0.1),baseBus 0))
+	, (4,(Affine (0.5,0.5) (0.06,0.1),basePattern 6))
 	-- , (4,(Affine (0.5,0.5) (0.06,0.1),baseViewer))
 	]) M.empty M.empty
-       
+rbe (SInput (realToFrac -> x,realToFrac -> y) c _) = renderPrimitive LineLoop $ do
+		vertex (Vertex2 (x - 0.05) (y - 0.05) :: Vertex2 GLfloat)
+		vertex (Vertex2 (x + 0.05) (y - 0.05) :: Vertex2 GLfloat)
+		vertex (Vertex2 (x + 0.05) (y + 0.05) :: Vertex2 GLfloat)
+		vertex (Vertex2 (x - 0.05) (y + 0.05) :: Vertex2 GLfloat)
+rbe (SOutput (realToFrac -> x,realToFrac -> y) c _ (_,N n) ) = do 
+		renderPrimitive LineLoop $ do
+			vertex (Vertex2 (x - 0.05) (y - 0.05) :: Vertex2 GLfloat)
+			vertex (Vertex2 (x + 0.05) (y - 0.05) :: Vertex2 GLfloat)
+			vertex (Vertex2 (x + 0.05) (y + 0.05) :: Vertex2 GLfloat)
+			vertex (Vertex2 (x - 0.05) (y + 0.05) :: Vertex2 GLfloat)
+		renderNumberPosWH 0.5 0.5 (x) (0.8) (y) (0.1) $ n
+  
 
 renderSynth :: Object Synth -> IO ()
-renderSynth (view object -> Pattern n y)  = do
+renderSynth (Object is os (Pattern n y))  = do
 			let 	d = 1 / fromIntegral n
 			polygonSmooth $= Enabled
 			forM_ (M.assocs y) $ \(i,v') -> do
@@ -137,7 +154,12 @@ renderSynth (view object -> Pattern n y)  = do
                                 vertex (Vertex2 1 0.1 :: Vertex2 GLfloat)
                                 vertex (Vertex2 1 0.9 :: Vertex2 GLfloat)
                                 vertex (Vertex2 0 0.9 :: Vertex2 GLfloat)
-renderSynth (view object -> Projection n y)  = do
+
+			forM_ (M.elems is) rbe
+			forM_ (M.elems os) rbe
+
+				
+renderSynth (Object is os (Projection n y))  = do
 			let 	d = 1 / fromIntegral n
 			polygonSmooth $= Enabled
 			forM_ (M.assocs y) $ \(i,v') -> do
@@ -172,7 +194,9 @@ renderSynth (view object -> Projection n y)  = do
                                 vertex (Vertex2 1 0.1 :: Vertex2 GLfloat)
                                 vertex (Vertex2 1 0.9 :: Vertex2 GLfloat)
                                 vertex (Vertex2 0 0.9 :: Vertex2 GLfloat)
-renderSynth (view object -> Synth n)  = do
+			forM_ (M.elems is) rbe
+			forM_ (M.elems os) rbe
+renderSynth (Object is os (Synth n))  = do
 			polygonSmooth $= Enabled
 			lineSmooth $= Enabled
 			color (Color4 0.6 0.7 0.8 0.1:: Color4 GLfloat)
@@ -194,7 +218,9 @@ renderSynth (view object -> Synth n)  = do
                                 vertex (Vertex2 1 0.1 :: Vertex2 GLfloat)
                                 vertex (Vertex2 1 0.9 :: Vertex2 GLfloat)
                                 vertex (Vertex2 0 0.9 :: Vertex2 GLfloat)
-renderSynth (view object -> Bus n)  = do
+			forM_ (M.elems is) rbe
+			forM_ (M.elems os) rbe
+renderSynth (Object is os (Bus n))  = do
 			polygonSmooth $= Enabled
 			lineSmooth $= Enabled
 			color (Color4 0.6 0.7 0.8 0.1:: Color4 GLfloat)
@@ -217,6 +243,8 @@ renderSynth (view object -> Bus n)  = do
                                 vertex (Vertex2 1 0.1 :: Vertex2 GLfloat)
                                 vertex (Vertex2 1 0.9 :: Vertex2 GLfloat)
                                 vertex (Vertex2 0 0.9 :: Vertex2 GLfloat)
+			forM_ (M.elems is) rbe
+			forM_ (M.elems os) rbe
 			{-
 			let	h = 1/(fromIntegral $ length ps + 1) 
 			 	pn n = (p  + n) / (n+1)
@@ -269,5 +297,5 @@ main = do
   set window [containerChild := connects] 
   widgetShowAll window
   dat <- widgetGetDrawWindow $ window
-  cursorNew Tcross >>= drawWindowSetCursor dat . Just 
+  cursorNew Tcross >>= drawWindowSetCursor dat . Just
   mainGUI

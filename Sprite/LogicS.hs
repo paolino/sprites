@@ -1,5 +1,5 @@
 {-# LANGUAGE TemplateHaskell, DeriveFunctor, ExistentialQuantification, GADTs, TypeFamilies, GeneralizedNewtypeDeriving, TypeOperators, MultiParamTypeClasses, DeriveTraversable, DeriveFoldable, DataKinds, ScopedTypeVariables, Rank2Types, FlexibleContexts  #-}
-module Sprite.Logic where
+module Sprite.LogicS where
 
 import Prelude hiding (sequence, any, foldr, elem, mapM)
 import Data.List hiding (any, foldr, elem)
@@ -47,7 +47,6 @@ type family SocketName a
 
 data Versus = Input | Output
 
-type family Signal a 
 
 data Socket a b where
 	SInput 	:: Point 	   -- center of the socket
@@ -57,8 +56,8 @@ data Socket a b where
 	SOutput :: Point 
 		-> Point 
 		-> SocketName a    -- socket name
-		-> ([Signal a] -> a -> Signal a, Signal a) -- (computation function from all inputs to this output)
-		-> Socket a Output  
+		-> Socket a Output 
+
 
 
 -- point lenses for a Socket
@@ -67,19 +66,19 @@ point :: forall f a b . Functor f => (Point -> f Point) -> Socket a b -> f (Sock
 point = lens f g where
 	f :: Socket a b -> Point
 	f (SInput p _ _) = p
-	f (SOutput p _ _ _) = p
+	f (SOutput p _ _ ) = p
 	g :: Socket a b -> Point -> Socket a b
 	g (SInput p s xs) q = SInput q s xs
-	g (SOutput p s x f) q = SOutput q s x f
+	g (SOutput p s x ) q = SOutput q s x 
 
 center :: forall f a b . Functor f => (Point -> f Point) -> Socket a b -> f (Socket a b)
 center = lens f g where
 	f :: Socket a b -> Point
 	f (SInput _ p _) = p
-	f (SOutput _ p _ _) = p
+	f (SOutput _ p _ ) = p
 	g :: Socket a b -> Point -> Socket a b
 	g (SInput s p xs) q = SInput s q xs
-	g (SOutput s p x f ) q = SOutput s q x f
+	g (SOutput s p x ) q = SOutput s q x 
 	
 -- transpose and scale
 data Affine =  Affine 
@@ -152,24 +151,24 @@ type RenderEdge  a m = Edge (Socket a) -> m ()
 -- render an object action
 type RenderObject a m = Object a -> Affine -> m () 
 
-renderGraph :: (Monad m, Functor m) => RenderEdge  a m -> RenderObject a m -> Graph a -> m ()
-renderGraph re ro g@(Graph sps es as) = do
-	forM_ sps $ \(a, x) -> ro x a 
-	forM_ (M.elems es) $ \e -> case realizeEdge g e of 
+renderGraph :: (Monad m, Functor m) => RenderEdge  a m -> RenderObject a m -> Graph a -> Point -> m ()
+renderGraph re ro g@(Graph sps es as) p = do
+	forM_ sps $ \(a, x) -> ro x (glass p a) 
+	forM_ (M.elems es) $ \e -> case realizeEdge g e p of 
 		Nothing -> error "lookup index failed in render graph"
 		Just eas -> re eas 
 
-realizeEdge :: Graph a -> Edge ISocketObj -> (Maybe  (Edge (Socket a)))
-realizeEdge g e = do 
-	s1 <- realizeSocket objectOutputs g $ e ^. edgeStart 
-	s2 <- realizeSocket objectInputs g $ e ^. edgeEnd
+realizeEdge :: Graph a -> Edge ISocketObj -> Point -> (Maybe  (Edge (Socket a)))
+realizeEdge g e p = do 
+	s1 <- realizeSocket p objectOutputs g $ e ^. edgeStart 
+	s2 <- realizeSocket p objectInputs g $ e ^. edgeEnd
 	return $ Edge s1 s2
  
-realizeSocket ::  ObjectLens a b -> Graph a -> ISocketObj b -> Maybe (Socket a b)
-realizeSocket f g  (ISocketObj io iso) = do
+realizeSocket ::  Point -> ObjectLens a b -> Graph a -> ISocketObj b -> Maybe (Socket a b)
+realizeSocket p f g  (ISocketObj io iso) = do
 	(a,x) <- g ^. vertexes . at io 
 	so <- x ^. f . at iso 
-	return (placeSocket a $ so)
+	return (placeSocket (glass p a) $ so)
  
 csplace :: Affine -> Point -> Point
 csplace (Affine c k)  x =  c .+. ((x .-. (0.5,0.5)) .*. k)
@@ -188,33 +187,9 @@ affineDistance m c = distance c $ m ^. affineTranspose
 placeSocket :: Affine -> Socket a b -> Socket a b
 placeSocket a = (center %~ csplace a) . (point %~ csplace a)
 
-
-------------------------------------------
------- Evaluation --------------------------
-------------------------------------------
-touchObject :: Monoid (Signal a) => (ISocket Input -> [Signal a]) -> Object a -> Object a
-touchObject f (Object is os x) = let 
-	e (SOutput p q li (g,ro)) = SOutput p q li (g,g ys x)
-	ys = map mconcat (map f $ M.keys is)
-	in Object is (e `fmap` os) x
-
-getValue :: Graph a -> IObject -> ISocket Input -> [Signal a]
-getValue  g o i = let 
-	ls = map (view edgeStart) . filter ((==) (ISocketObj o i) . view edgeEnd) $ M.elems $ g ^. edges
-	check io = case realizeSocket objectOutputs g io of
-		Nothing -> error "getValue index error"
-		Just o -> o 
-	in  map ((\(SOutput p q li (g,ro)) -> ro) . check) $ ls
-
-updateObject :: Monoid (Signal a) => IObject -> Graph a -> Graph a
-updateObject o g = vertexes . at o %~ fmap (second $  touchObject (getValue g o)) $ g
-
-	
-mkAcyclic :: Graph a -> [(IObject,IObject)]
-mkAcyclic g = map (\(Edge u d) -> (u ^. isobject, d ^. isobject)) . M.elems $ g ^. edges
-
--- !!!!   tsort and updateObject
-
+glass :: Point -> Affine -> Affine
+glass p@(px,py) (Affine t@(tx,ty) s@(sx,sy)) = Affine (tx,ty) (sx / d , sy / d)
+		where d = ( (+ 0.04) $ distance p t) ** 0.2
 
 -----------------------------------
 --- Comonadic Graph Interface -----
@@ -234,7 +209,7 @@ sendToVertex :: (Functor m, Applicative m) => Point -> Graph a -> (Point -> a ->
 sendToVertex p g f = case nearestVertexes p g of 
 	[] -> pure g
 	io : _ -> let Just a = g ^? vertexes . at io . traverse . _1 in
-		vertexes %%~ (ix io (_2 . object %%~ f (affineBack a p))) $ g 
+		vertexes %%~ (ix io (_2 . object %%~ f (affineBack (glass p a) p))) $ g 
 
 
 scaleXVertex :: Point -> Graph a -> (Double -> Double) -> Graph a
@@ -287,7 +262,7 @@ nearestEdges
 nearestEdges c g = map snd . sortBy (comparing fst) . catMaybes $ do
 			(ie,e) <- M.assocs $ g ^. edges
 			let f (Edge s1 s2) = (sort [distance c (s1 ^. point), distance c (s2 ^. point)], ie)	
-			return  . fmap f $ realizeEdge g e 
+			return  . fmap f $ realizeEdge g e c 
 
 -- assigned aware edge romoval, unsafe in the edge index
 removeEdge ::  IEdge -> Graph a -> Graph a
@@ -347,11 +322,11 @@ newEdge p g = let
 
 completeEdgeInput :: Eq (SocketName a) => ISocketObj Input -> Graph a -> Point  -> Graph a
 completeEdgeInput j g p = 
-	case realizeSocket objectInputs g j of
+	case realizeSocket p objectInputs g j of
 		Nothing -> error "completeEdgeOutput index error"
-		Just (SInput _ _ ns) -> case filter (judgeOutputSockets ns g j ) $  nearestSockets objectOutputs p g of
+		Just (SInput _ _ ns) -> case filter (judgeOutputSockets p ns g j) $  nearestSockets objectOutputs p g of
 			[] -> g
-			i : _ -> let 	g' = addEdge (Edge i j) g
+			i : _ -> let 	g' = addEdge (Edge i j) g p
 					es = map (\(Edge x y) -> (x ^. isobject, y ^. isobject))  (M.elems  $ g' ^. edges)
 
 				in case tsort es of
@@ -359,25 +334,25 @@ completeEdgeInput j g p =
 					_ ->  g'
 
 
-judgeOutputSockets :: Eq (SocketName a) => [SocketName a] -> Graph a -> ISocketObj Input -> ISocketObj Output -> Bool
-judgeOutputSockets ns g j i = case realizeSocket objectOutputs g i of
+judgeOutputSockets :: Eq (SocketName a) => Point -> [SocketName a] -> Graph a -> ISocketObj Input -> ISocketObj Output -> Bool
+judgeOutputSockets p ns g j i = case realizeSocket p objectOutputs g i of
 		Nothing -> error "judgeOutputSockets index error"
-		Just (SOutput _ _ n _) -> g ^. assigned . at j == Just n || (g ^. assigned . at j == Nothing && n `elem` ns)
+		Just (SOutput _ _ n) -> g ^. assigned . at j == Just n || (g ^. assigned . at j == Nothing && n `elem` ns)
  
 completeEdgeOutput :: Eq (SocketName a) => ISocketObj Output -> Graph a -> Point -> Graph a
 completeEdgeOutput j g p = 
-	case realizeSocket objectOutputs g j of
+	case realizeSocket p objectOutputs g j of
 		Nothing -> error "completeEdgeOutput index error"
-		Just (SOutput _ _ n _) -> case filter (judgeInputSockets n g) $  nearestSockets objectInputs p g of
+		Just (SOutput _ _ n ) -> case filter (judgeInputSockets p n g) $  nearestSockets objectInputs p g of
 			[] -> g
-			i : _ -> let 	g' = addEdge (Edge j i) g
+			i : _ -> let 	g' = addEdge (Edge j i) g p
 					es = map (\(Edge x y) -> (x ^. isobject, y ^. isobject))  (M.elems  $ g' ^. edges)
 				in case tsort es of
 					Nothing -> g
 					_ ->  g'
 
-judgeInputSockets :: Eq (SocketName a) => SocketName a -> Graph a -> ISocketObj Input -> Bool
-judgeInputSockets n g i = case realizeSocket objectInputs g i of
+judgeInputSockets :: Eq (SocketName a) => Point -> SocketName a -> Graph a -> ISocketObj Input -> Bool
+judgeInputSockets p n g i = case realizeSocket p objectInputs g i of
 		Nothing -> error "judgeInputSockets index error"
 		Just (SInput _ _ ns) ->  g ^. assigned . at i == Just n || (g ^. assigned . at i == Nothing && n `elem` ns) 
 
@@ -386,15 +361,15 @@ newKey g
 	| M.null g = 0
 	| otherwise = succ . fst $ M.findMax $ g 
 
-addEdge :: Edge ISocketObj  -> Graph a -> Graph a
-addEdge e g = (assigned . at (e ^. edgeEnd) .~ (Just . sone $ e ^. edgeStart)) . (edges . at (newKey $ g ^. edges) .~ Just e) $ g where
-	sone s = case fmap (\(SOutput _ _ n _) -> n) $ realizeSocket objectOutputs g s of
+addEdge :: Edge ISocketObj  -> Graph a -> Point -> Graph a
+addEdge e g p = (assigned . at (e ^. edgeEnd) .~ (Just . sone $ e ^. edgeStart)) . (edges . at (newKey $ g ^. edges) .~ Just e) $ g where
+	sone s = case fmap (\(SOutput _ _ n ) -> n) $ realizeSocket p objectOutputs g s of
 		Nothing -> error "addEdge index error"
 		Just x -> x
 
 findBestSocket :: ObjectLens a b -> Point -> Graph a -> Maybe (Distance, ISocketObj b)
 findBestSocket f p g = fmap (first $ socketDistance p) . listToMaybe . catMaybes . map (\(m,i) -> flip (,) i `fmap` m) 
-	                     . map (realizeSocket f g &&& id) $ nearestSockets f p g 
+	                     . map (realizeSocket p f g &&& id) $ nearestSockets f p g 
 
 -- | move one vertex of an edge
 modifyEdge :: forall a . Eq (SocketName a) => Point -> Graph a -> Maybe (Point -> Graph a)
@@ -402,10 +377,14 @@ modifyEdge p g = case nearestEdges p g of
 	[] -> Nothing
 	i : _ -> case g ^. edges . at i of
 		Nothing ->  error "modifyEdge index error" 
-		Just j -> case realizeEdge g j of
+		Just j -> case realizeEdge g j p of
 			Nothing -> error "modifyEdge index error"
 			Just (Edge si se)  -> case socketDistance p si > socketDistance p se of
 				True -> Just $ completeEdgeOutput (j ^. edgeStart) (removeEdge i g)
 				False -> Just $ completeEdgeInput (j ^. edgeEnd) (removeEdge i g)
-	
+
+--------------------------
+
+mkAcyclic g =  map (\(Edge x y) -> (y ^. isobject, x ^. isobject))  (M.elems  $ g ^. edges)
+mkObjects g = fmap  (view $ _2 . object) (g ^. vertexes) 	
 

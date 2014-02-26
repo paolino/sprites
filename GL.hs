@@ -20,8 +20,8 @@ bootGL = do
   pointSmooth $= Enabled
   polygonSmooth $= Enabled
   shadeModel $= Smooth
-  -- We need a OpenGL frame buffer configuration to be able to create other
-  -- OpenGL objects.
+
+
 
 mkCanva :: TVar (Int,Int) -> (GLWindow -> IO a) -> IO GLDrawingArea
 mkCanva size draw = do

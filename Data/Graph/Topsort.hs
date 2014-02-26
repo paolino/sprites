@@ -1,10 +1,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Data.Graph.Topsort where
 import Data.List (foldl')
-import Control.Applicative ((<*>),pure , (<*))
+import Control.Applicative ((<*>))
 import Data.List (partition,filter, nub)
-import Control.Monad.Writer (execWriter, tell, foldM)
-import qualified Data.Set as S
+
 -- Una dipendenza è una coppia di valori dello stesso tipo 
 type Dipendenza a = (a,a)
 
