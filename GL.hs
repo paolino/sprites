@@ -45,7 +45,7 @@ mkCanva size draw = do
 
   on canvas configureEvent $ do
 	   (w,h) <- eventSize
-	   liftIO $ do 
+	   liftIO $ do		   
 		   atomically $ writeTVar size (w,h)
 		   viewport $= (Position 0 0, Size (fromIntegral w) (fromIntegral h))
 		   matrixMode $= Projection
@@ -70,6 +70,8 @@ mkCanva size draw = do
     priorityLow
 
   return canvas
+
+
 
 
 kcolor :: GLfloat -> GLfloat -> GLfloat -> GLfloat -> GLfloat -> Color4 GLfloat

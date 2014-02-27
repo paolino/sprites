@@ -30,7 +30,7 @@ renderAGL f x (Affine (toGLfloat -> cx,toGLfloat -> cy) (toGLfloat -> sx,toGLflo
 			f x 
 
 renderEdgeGL :: RenderEdge a IO 
-renderEdgeGL (Edge (SOutput p1 c1 _ _) (SInput p2 c2 _)) = do
+renderEdgeGL (Edge (SOutput p1 c1 _) (SInput p2 c2 _)) = do
    renderPrimitive Points $ return () -- bug ??!?
    color (Color4 0.3 0.4 0.5 1 :: Color4 GLfloat)
    let	 v1 = fst (c1 .-. p1) > 0 
@@ -84,7 +84,7 @@ graphing  innerclick innerscroll renderA ref = do
 	  g' <- case conn of 
 		Nothing -> return g
 		Just f -> atomically (f c) 
-	  renderGraph renderEdgeGL (renderAGL renderA) g' 
+	  renderGraph renderEdgeGL (renderAGL renderA) g' c 
 
   widgetSetEvents connects [AllEventsMask]
   on connects buttonPressEvent $ do

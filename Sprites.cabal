@@ -51,7 +51,7 @@ cabal-version:       >=1.10
 
 library
   -- Modules exported by the library.
-  exposed-modules:     Haskell, OpenGlDigits, GL, Data.Graph.Topsort, Sprite.Logic, Sprite.Widget
+  exposed-modules:     Haskell, OpenGlDigits, GUI, GL, Data.Graph.Topsort, Sprite.Logic, Sprite.Widget
   
   -- Modules included in this library but not exported.
   -- other-modules:       

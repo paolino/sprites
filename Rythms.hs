@@ -1,7 +1,11 @@
 
 {-# LANGUAGE TypeFamilies, GeneralizedNewtypeDeriving, DataKinds, ViewPatterns,GADTs #-}
-import GL
+
+
+-- module Rythms where
+
 import OpenGlDigits
+
 import Control.Concurrent.STM
 import Control.Concurrent
 
@@ -10,12 +14,14 @@ import Graphics.UI.Gtk.OpenGL
 import Graphics.Rendering.OpenGL  hiding (Projection)
 import qualified Data.Map as M
 import Control.Monad
-import Sprite.LogicS
-import Sprite.WidgetS
+import Sprite.Logic
+import Sprite.Widget
 import Control.Lens hiding (set)
 import Haskell
 import Data.Monoid
 import Data.List.Zipper (insert,empty, cursor)
+
+import GUI
 
 
 data Synth = Pattern (M.Map Int GLfloat) | Synth Int  deriving Show
@@ -56,11 +62,6 @@ setSynth (x,y) e@(Pattern q)
 setSynth _ x = return x
 
 
-graph :: Graph Synth
-graph = Graph (M.fromList $ 
-	[ (0,(Affine (0.5,0.5) (0.06,0.1),basePattern))
-	, (1,(Affine (0.5,0.5) (0.06,0.1),baseSynth 0))
-	]) M.empty M.empty
 
 rbe (SInput (realToFrac -> x,realToFrac -> y) c _) = renderPrimitive LineLoop $ do
 		vertex (Vertex2 (x - 0.05) (y - 0.05) :: Vertex2 GLfloat)
@@ -144,26 +145,14 @@ renderSynth (Object is os (Synth n))  = do
 			forM_ (M.elems is) rbe
 			forM_ (M.elems os) rbe
 
+
+
+graph :: Graph Synth
+graph = Graph (M.fromList $ 
+	[ (0,(Affine (0.5,0.5) (0.1,0.06),basePattern))
+	, (1,(Affine (0.5,0.5) (0.06,0.1),baseSynth 0))
+	]) M.empty M.empty
+
 main = do
-  initGUI
-  bootGL
-  window <- windowNew
-  onDestroy window mainQuit
-  set window [ containerBorderWidth := 8,
-                   windowTitle := "tracks widget" ]
-  hb <- hBoxNew False 1
-
-  ref <- newTVarIO $ insert graph empty
-
-  connects <- graphing setSynth scrollSynth renderSynth ref 
-  set window [containerChild := connects] 
-  widgetShowAll window
-  dat <- widgetGetDrawWindow $ window
-  cursorNew Tcross >>= drawWindowSetCursor dat . Just
-  forkIO . forever $ do
-	getLine
-	z <- atomically (readTVar ref) 
-	print (mkAcyclic $ cursor z)
-	print (mkObjects $ cursor z)
-	
-  mainGUI
+	ref <- newTVarIO (insert graph empty)
+	run setSynth scrollSynth renderSynth ref
