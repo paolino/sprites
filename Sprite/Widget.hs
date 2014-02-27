@@ -5,7 +5,7 @@ module Sprite.Widget where
 
 import Control.Arrow ((***))
 
-import Graphics.UI.Gtk hiding (Point, Socket, Object)
+import Graphics.UI.Gtk hiding (Point, Socket, Object,focus)
 import Graphics.UI.Gtk.OpenGL hiding (Sink)
 import Graphics.Rendering.OpenGL hiding (Sink)
 
@@ -13,10 +13,15 @@ import Control.Monad
 import Control.Concurrent.STM
 import Control.Monad.Trans
 
-import Data.List.Zipper
+import Data.List.PointedList
 	
 import Sprite.GL (mkCanva)
 import Sprite.Logic
+import Control.Lens (view)
+
+
+cursor :: PointedList a -> a
+cursor = view focus
 
 toGLfloat :: Double -> GLfloat
 toGLfloat = realToFrac
@@ -60,19 +65,16 @@ renderEdgeGL (Edge (SOutput p1 c1 _) (SInput p2 c2 _)) = do
 	-- color (Color4 (linear p1 p2 i) (linear p1 p2  i) (linear p1 p2 i) 0.1 :: Color4 GLfloat)
         evalCoord1 i
 
-addGraph ref x = modifyTVar ref $ insert x . head . dropWhile (not . beginp) . iterate pop
+addGraph ref x = modifyTVar ref $ insertRight  x 
 
 graphing 
 	:: Eq (SocketName a) 
 	=> (Point -> a -> STM a) -- react to a left click inside the widget 
 	-> (ScrollDirection -> Point -> a -> STM a)  -- react to a scrolling inside a widget
 	-> (Object a  -> IO ())  -- GL renders an Object a
-	->  TVar (Zipper (Graph a)) -- shared state of the graph, with undo and redo
+	->  TVar (PointedList (Graph a)) -- shared state of the graph, with undo and redo
 	-> IO GLDrawingArea
 graphing  innerclick innerscroll renderA ref = do
-  let saferight x = let 
-	x' = right x
-	in if endp x' then  x else x'
   connecting <- newTVarIO Nothing
   coo <- newTVarIO (0,0)
   size <- newTVarIO  (1,1)
@@ -138,10 +140,10 @@ graphing  innerclick innerscroll renderA ref = do
 			"d" -> addGraph ref $ deleteVertex c g
 			
 			"z" -> case ms of
-					[Control] -> modifyTVar ref saferight		
+					[Control] -> modifyTVar ref tryPrevious		
 					_ -> return ()
 			"y" -> case ms of
-					[Control] -> modifyTVar ref left
+					[Control] -> modifyTVar ref tryNext
 					_ -> return ()
 			_ -> return ()
 	return True

@@ -18,7 +18,7 @@ import Sprite.Widget
 import Control.Lens hiding (set)
 -- import Haskell
 import Data.Monoid
-import Data.List.Zipper (insert,empty, cursor,Zipper (..))
+import Data.List.PointedList 
 
 import Sprite.GUI
 import Data.Binary
@@ -163,14 +163,10 @@ graph = Graph (M.fromList $
 	, (1,(Affine (0.5,0.5) (0.06,0.1),baseSynth 0))
 	]) M.empty M.empty
 
-instance Binary a =>  Binary (Zipper a) where
-        put (Zip x y) = put x >> put y
-        get = liftM2 Zip get get
-
 main = do
         g <- decodeFile "prova.rythms" 
-	-- ref <- newTVarIO (insert graph empty)
         ref <- newTVarIO g
+	-- ref <- newTVarIO (singleton graph)
 	run setSynth scrollSynth renderSynth ref
         
         atomically (readTVar ref) >>= encodeFile "prova.rythms"

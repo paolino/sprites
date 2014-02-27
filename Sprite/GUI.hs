@@ -8,7 +8,7 @@ import Graphics.UI.Gtk hiding (Point, Object)
 import Graphics.Rendering.OpenGL 
 import Control.Concurrent.STM
 import Control.Monad.Trans
-import Data.List.Zipper
+import Data.List.PointedList
 import Sprite.Widget (graphing) 
 import Sprite.Logic
 import Sprite.GL
@@ -17,7 +17,7 @@ run  :: Eq (SocketName a) =>
      (Point -> a -> STM a)
      -> (ScrollDirection -> Point -> a -> STM a)
      -> (Object a -> IO ())
-     -> TVar (Zipper (Graph a))
+     -> TVar (PointedList (Graph a))
      -> IO ()
 
 run setx scrollx renderx ref = do
