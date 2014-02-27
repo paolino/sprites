@@ -1,11 +1,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+
 module Data.Graph.Topsort where
+
 import Data.List (foldl')
 import Control.Applicative ((<*>))
 import Data.List (partition,filter, nub)
 
 -- Una dipendenza è una coppia di valori dello stesso tipo 
-type Dipendenza a = (a,a)
+type Dependence a = (a,a)
 
 -- il primo valore della coppia è quello dipendente
 dipendente (x,y) = x
@@ -16,7 +18,7 @@ dipendenza (x,y) = y
 -- calcola un ordinamento topologico quando possibile dato un insieme di dipendenze e un insieme di indipendenti
 topsort 
         :: Eq a           -- i valori di tipo a devono essere confrontabile con l'uguaglianza
-        => [Dipendenza a] -- l'insieme delle dipendenze
+        => [Dependence a] -- l'insieme delle dipendenze
         -> [a]            -- insieme iniziale di indipendenti
         -> Maybe [a]      -- un possibile ordinamento, dai meno dipendenti ai più
 
@@ -34,21 +36,21 @@ topsort  zs (n:ys)  =  let
         in fmap (n:) $ topsort  zs' (ys ++ ms') 
 
 
--- estrazione degli indipendenti iniziali
+-- | set of independent nodes
 independent     :: forall a. Eq a       -- i valori di tipo a devono essere confrontabile con l'uguaglianza
-                =>  [Dipendenza a]      -- l'insieme delle dipendenze
+                =>  [Dependence a]      -- l'insieme delle dipendenze
                 -> [a]                  -- gli indipendenti iniziali
 
 independent xs = let 
-        -- giudica positivo quando tutti i dipendenti nell'insieme sono diversi dalla dipendenza di x :: Dipendenza
-        judge :: Dipendenza a -> Bool
+        -- giudica positivo quando tutti i dipendenti nell'insieme sono diversi dalla dipendenza di x :: Dependence
+        judge :: Dependence a -> Bool
         judge x = all ((/=) (dipendenza x) . dipendente)   xs
         -- filtro le dipendenze con il giudice e mi tengo solo i valori dipendenza ed elimino i duplicati (nub)
         in nub . map dipendenza . filter judge $ xs
 
 
--- topsort chiamato con i dipendenti iniziali
-tsort :: (Show a, Eq a) => [Dipendenza a] -> Maybe [a]
+-- | topsort on independent nodes
+tsort :: (Show a, Eq a) => [Dependence a] -> Maybe [a]
 tsort = topsort <*> independent
 
 -- | Compute the set of nodes reachable from the given set of nodes.

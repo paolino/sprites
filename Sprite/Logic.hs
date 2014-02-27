@@ -24,6 +24,8 @@ import Data.Monoid
 import Debug.Trace
 import Data.Graph.Topsort
 
+import Data.Ord (comparing)
+
 type Distance = Double
 type Point = (Double , Double)
 
@@ -43,13 +45,14 @@ distance (x,y) (x1,y1) = sqrt ((x - x1) ^ 2 + (y - y1) ^ 2)
 mid :: Distance -> Point -> Point -> Point
 mid k (x,y) (x1,y1) = ((x + k*x1) / (k + 1) ,(y + k * y1) / (k + 1))
 
-
+-- | a type associated to index the socket type
 type family SocketName a
 
+-- | 2 kinds for a socket
 data Versus = Input | Output
 
-
-data Socket a b where
+-- | sockets
+data Socket (a :: *) :: Versus -> * where
 	SInput 	:: Point 	   -- center of the socket
 		-> Point 	   -- center of the widget
 		-> [SocketName a]  -- possible inputs
@@ -66,8 +69,7 @@ instance (Binary (SocketName a)) => Binary (Socket a Output) where
         put (SOutput x y z) = put x >> put y >> put z
         get = liftM3 SOutput get get get
 
--- point lenses for a Socket
-
+-- | point lenses for a Socket
 point :: forall f a b . Functor f => (Point -> f Point) -> Socket a b -> f (Socket a b)
 point = lens f g where
 	f :: Socket a b -> Point
@@ -77,6 +79,7 @@ point = lens f g where
 	g (SInput p s xs) q = SInput q s xs
 	g (SOutput p s x ) q = SOutput q s x 
 
+-- | point lenses for a Socket
 center :: forall f a b . Functor f => (Point -> f Point) -> Socket a b -> f (Socket a b)
 center = lens f g where
 	f :: Socket a b -> Point
@@ -265,18 +268,24 @@ deleteVertex p g = case nearestVertexes p g of
 	io: _ -> (vertexes . at io .~ Nothing) . foldr removeEdge g $ vertexEdges g io
  
 -- sort all sockets by distance from a point
+nearestSockets' 
+     :: ObjectLens a b 
+     -> Point
+     -> Graph a
+     -> [(Distance, ISocketObj b)]
+nearestSockets' f c g = sortBy (comparing fst) $ do
+			(io, (a,o)) <- M.assocs $ g ^. vertexes
+			(iso ,c') <- M.assocs . fmap (csplace a . view point) $ o ^. f
+			return  (distance c c', ISocketObj io iso)
 nearestSockets 
      :: ObjectLens a b 
      -> Point
      -> Graph a
      -> [ISocketObj b]
-nearestSockets f c g = map snd . sortBy (comparing fst) $ do
-			(io, (a,o)) <- M.assocs $ g ^. vertexes
-			(iso ,c') <- M.assocs . fmap (csplace a . view point) $ o ^. f
-			return  (distance c c', ISocketObj io iso)
+nearestSockets f c g = map snd $ nearestSockets' f c g
 
-
-nearestVertexes p g = map (view isobject) (nearestSockets objectInputs p g) ++ map (view isobject) (nearestSockets objectInputs p g)
+nearestVertexes p g = map snd . sortBy (comparing fst) $ 
+        map (view (id `alongside` isobject)) (nearestSockets' objectInputs p g) ++ map (view (id `alongside` isobject)) (nearestSockets' objectOutputs p g)
 
 -- sort edges by distance to a point, comparing the two distances from edge vertexes to the point sorted 
 nearestEdges 
