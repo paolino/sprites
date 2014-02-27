@@ -1,7 +1,7 @@
 
 {-# LANGUAGE ViewPatterns, GADTs, FlexibleContexts  #-}
 
-module GUI where
+module Sprite.GUI where
   
 import Graphics.UI.Gtk.OpenGL 
 import Graphics.UI.Gtk hiding (Point, Object)
@@ -11,7 +11,7 @@ import Control.Monad.Trans
 import Data.List.Zipper
 import Sprite.Widget (graphing) 
 import Sprite.Logic
-import GL
+import Sprite.GL
 
 run  :: Eq (SocketName a) =>
      (Point -> a -> STM a)
@@ -20,7 +20,7 @@ run  :: Eq (SocketName a) =>
      -> TVar (Zipper (Graph a))
      -> IO ()
 
-run setSynth scrollSynth renderSynth ref = do
+run setx scrollx renderx ref = do
   initGUI
   bootGL
   window <- windowNew
@@ -28,7 +28,7 @@ run setSynth scrollSynth renderSynth ref = do
   set window [ containerBorderWidth := 8,
                    windowTitle := "tracks widget" ]
   hb <- hBoxNew False 1
-  connects <- graphing setSynth scrollSynth renderSynth ref 
+  connects <- graphing setx scrollx renderx ref 
   set window [containerChild := connects] 
   widgetShowAll window
   dat <- widgetGetDrawWindow $ window

@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, DeriveFunctor, ExistentialQuantification, GADTs, TypeFamilies, GeneralizedNewtypeDeriving, TypeOperators, MultiParamTypeClasses, DeriveTraversable, DeriveFoldable, DataKinds, ScopedTypeVariables, Rank2Types, FlexibleContexts  #-}
+{-# LANGUAGE TemplateHaskell, DeriveFunctor, ExistentialQuantification, GADTs, TypeFamilies, GeneralizedNewtypeDeriving, TypeOperators, MultiParamTypeClasses, DeriveTraversable, DeriveFoldable, DataKinds, ScopedTypeVariables, Rank2Types, FlexibleContexts, FlexibleInstances, UndecidableInstances #-}
 module Sprite.Logic where
 
 import Prelude hiding (sequence, any, foldr, elem, mapM)
@@ -9,6 +9,7 @@ import qualified Data.Map as M
 import Control.Arrow
 
 import Control.Monad.Trans
+import Control.Monad (liftM3, liftM2)
 import Data.Typeable
 import Control.Lens hiding (set, Affine)
 import Data.Traversable
@@ -17,7 +18,7 @@ import Data.Monoid
 import Control.Applicative
 
 import Data.Functor.Identity
-
+import Data.Binary
 
 import Data.Monoid
 import Debug.Trace
@@ -58,7 +59,12 @@ data Socket a b where
 		-> SocketName a    -- socket name
 		-> Socket a Output 
 
-
+instance (Binary (SocketName a)) => Binary (Socket a Input) where
+        put (SInput x y z) = put x >> put y >> put z
+        get = liftM3 SInput get get get
+instance (Binary (SocketName a)) => Binary (Socket a Output) where
+        put (SOutput x y z) = put x >> put y >> put z
+        get = liftM3 SOutput get get get
 
 -- point lenses for a Socket
 
@@ -85,11 +91,14 @@ data Affine =  Affine
 	{	_affineTranspose :: Point -- ^ transposition point
 	,	_affineScale :: Point  -- ^ two dim scaling factor
 	}
+instance  Binary Affine where
+        put (Affine x y) = put x >> put y 
+        get = liftM2 Affine get get 
 
 $(makeLenses ''Affine)
 
 -- counting sockets
-newtype ISocket (a :: Versus) = ISocket Int deriving (Num,Ord,Eq, Enum)
+newtype ISocket (a :: Versus) = ISocket Int deriving (Num,Ord,Eq, Enum,Binary)
 
 -- an oject with its sockets
 data Object a = Object 
@@ -99,6 +108,9 @@ data Object a = Object
 	}
 $(makeLenses ''Object)
 
+instance (Binary (SocketName a), Binary a) => Binary (Object a) where
+        put (Object x y z) = put x >> put y >> put z
+        get = liftM3 Object get get get
 
 -- lensing type
 type ObjectLens a b = Lens' (Object a) (M.Map (ISocket b) (Socket a b))
@@ -110,10 +122,14 @@ data Edge a = Edge
 	} 
 $(makeLenses ''Edge)
 
+instance (Binary (a Output), Binary (a Input)) =>  Binary (Edge a) where
+        put (Edge x y) = put x >> put y 
+        get = liftM2 Edge get get 
+
 type EdgeLens a b = Lens' (Edge a) (a b)
 
 -- object counting
-newtype IObject = IObject Int  deriving (Num,Ord,Eq, Enum, Show)
+newtype IObject = IObject Int  deriving (Num,Ord,Eq, Enum, Show, Binary)
 
 -- indexing a socket 
 data ISocketObj (a::Versus) = ISocketObj 
@@ -121,9 +137,14 @@ data ISocketObj (a::Versus) = ISocketObj
 	,	_isocket   :: ISocket a
 	} deriving (Eq,Ord)
 $(makeLenses ''ISocketObj)
-
 -- edge counting
-newtype IEdge = IEdge Int  deriving (Num,Ord,Eq, Enum)
+
+instance Binary (ISocketObj a) where
+        put (ISocketObj x y) = put x >> put y 
+        get = liftM2 ISocketObj get get 
+
+
+newtype IEdge = IEdge Int  deriving (Num,Ord,Eq, Enum,Binary)
 
 
 -- | Database of objects and cords
@@ -135,6 +156,9 @@ data Graph a = Graph
 
 $(makeLenses ''Graph)
 
+instance (Binary (SocketName a), Binary a) => Binary (Graph a) where
+        put (Graph x y z) = put x >> put y >> put z
+        get = liftM3 Graph get get get
 
 
 

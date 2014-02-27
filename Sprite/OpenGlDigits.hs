@@ -1,4 +1,4 @@
-module OpenGlDigits where
+module Sprite.OpenGlDigits where
 
 import Graphics.Rendering.OpenGL
 import Data.Char

@@ -7,14 +7,15 @@ import Control.Arrow ((***))
 
 import Graphics.UI.Gtk hiding (Point, Socket, Object)
 import Graphics.UI.Gtk.OpenGL hiding (Sink)
+import Graphics.Rendering.OpenGL hiding (Sink)
+
 import Control.Monad
 import Control.Concurrent.STM
 import Control.Monad.Trans
-import Graphics.Rendering.OpenGL hiding (Sink)
 
 import Data.List.Zipper
 	
-import GL (mkCanva)
+import Sprite.GL (mkCanva)
 import Sprite.Logic
 
 toGLfloat :: Double -> GLfloat

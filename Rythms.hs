@@ -4,27 +4,37 @@
 
 -- module Rythms where
 
-import OpenGlDigits
 
 import Control.Concurrent.STM
 import Control.Concurrent
 
-import Graphics.UI.Gtk hiding (Point,Signal, Object)
-import Graphics.UI.Gtk.OpenGL 
-import Graphics.Rendering.OpenGL  hiding (Projection)
+import Graphics.UI.Gtk hiding (Point,Signal, Object,get)
+import Graphics.UI.Gtk.OpenGL  hiding (get)
+import Graphics.Rendering.OpenGL  hiding (get,Projection)
 import qualified Data.Map as M
 import Control.Monad
 import Sprite.Logic
 import Sprite.Widget
 import Control.Lens hiding (set)
-import Haskell
+-- import Haskell
 import Data.Monoid
-import Data.List.Zipper (insert,empty, cursor)
+import Data.List.Zipper (insert,empty, cursor,Zipper (..))
 
-import GUI
+import Sprite.GUI
+import Data.Binary
 
+import Sprite.OpenGlDigits
 
-data Synth = Pattern (M.Map Int GLfloat) | Synth Int  deriving Show
+data Synth = Pattern (M.Map Int Double) | Synth Int  deriving Show
+
+instance Binary Synth where
+        put (Pattern x) = put 'a' >> put x
+        put (Synth x) = put 'b' >> put x
+        get = do
+                x <- get
+                case x of 
+                        'a' -> Pattern `fmap` get
+                        'b' -> Synth `fmap` get
 
 type instance SocketName Synth = String 
 
@@ -94,8 +104,8 @@ renderSynth (Object is os (Pattern  y))  = do
 					vertex (Vertex2 x1 0.05 :: Vertex2 GLfloat)
 					vertex (Vertex2 x2  0.05 :: Vertex2 GLfloat)
 					-- mcolor p 4 3 2 1
-					vertex (Vertex2 x2 (0.05 + v) :: Vertex2 GLfloat)
-					vertex (Vertex2 x1 (0.05 + v) :: Vertex2 GLfloat)
+					vertex (Vertex2 x2 (0.05 + realToFrac v) :: Vertex2 GLfloat)
+					vertex (Vertex2 x1 (0.05 + realToFrac v) :: Vertex2 GLfloat)
 			color (Color4 0.8 0.9 1 0.1:: Color4 GLfloat)
 			forM_ [(0.1,0.1), (0.9,0.1),(0.9,0.9),(0.1,0.9)] $ \(xc,yc) -> 
 				renderPrimitive Polygon $ forM_ [0,0.1.. 2*pi] $ \a -> do
@@ -153,6 +163,14 @@ graph = Graph (M.fromList $
 	, (1,(Affine (0.5,0.5) (0.06,0.1),baseSynth 0))
 	]) M.empty M.empty
 
+instance Binary a =>  Binary (Zipper a) where
+        put (Zip x y) = put x >> put y
+        get = liftM2 Zip get get
+
 main = do
-	ref <- newTVarIO (insert graph empty)
+        g <- decodeFile "prova.rythms" 
+	-- ref <- newTVarIO (insert graph empty)
+        ref <- newTVarIO g
 	run setSynth scrollSynth renderSynth ref
+        
+        atomically (readTVar ref) >>= encodeFile "prova.rythms"

@@ -1,4 +1,4 @@
-module GL where
+module Sprite.GL where
   
 import Graphics.UI.Gtk.OpenGL 
 import Graphics.UI.Gtk 
