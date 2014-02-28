@@ -13,7 +13,7 @@ import Sprite.Widget (graphing)
 import Sprite.Logic
 import Sprite.GL
 
-run  :: Eq (SocketName a) =>
+run  :: (Eq (SocketName a), Eq (ControlName a)) =>
      (Point -> a -> STM a)
      -> (ScrollDirection -> Point -> a -> STM a)
      -> (Object a -> IO ())

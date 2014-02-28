@@ -17,7 +17,7 @@ import Data.List.PointedList
 	
 import Sprite.GL (mkCanva)
 import Sprite.Logic
-import Control.Lens (view)
+import Control.Lens (view, alongside)
 
 
 cursor :: PointedList a -> a
@@ -35,8 +35,11 @@ renderAGL f x (Affine (toGLfloat -> cx,toGLfloat -> cy) (toGLfloat -> sx,toGLflo
 			translate (Vector3 (-0.5) (-0.5) (0 :: GLfloat))
 			f x 
 
-renderEdgeGL :: RenderEdge a IO 
-renderEdgeGL (Edge (SOutput p1 c1 _) (SInput p2 c2 _)) = do
+renderEdgeGL :: RenderEdge a IO
+renderEdgeGL (Bi (x,y)) = renderEdgeGL' (view point x, view center x) (view point y , view center y)
+renderEdgeGL (Dir x y) = renderEdgeGL' (view point x, view  center x) (view point y, view  center y)
+
+renderEdgeGL' (p1,c1) (p2,c2) = do
    renderPrimitive Points $ return () -- bug ??!?
    color (Color4 0.3 0.4 0.5 1 :: Color4 GLfloat)
    let	 v1 = fst (c1 .-. p1) > 0 
@@ -68,7 +71,7 @@ renderEdgeGL (Edge (SOutput p1 c1 _) (SInput p2 c2 _)) = do
 addGraph ref x = modifyTVar ref $ insertRight  x 
 
 graphing 
-	:: Eq (SocketName a) 
+	:: (Eq (SocketName a), Eq (ControlName a))
 	=> (Point -> a -> STM a) -- react to a left click inside the widget 
 	-> (ScrollDirection -> Point -> a -> STM a)  -- react to a scrolling inside a widget
 	-> (Object a  -> IO ())  -- GL renders an Object a
