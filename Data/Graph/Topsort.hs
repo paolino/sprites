@@ -2,9 +2,11 @@
 
 module Data.Graph.Topsort where
 
-import Data.List (foldl')
+import Data.List (foldl', unfoldr)
 import Control.Applicative ((<*>))
 import Data.List (partition,filter, nub)
+import Debug.Trace
+import Control.Monad
 
 -- Una dipendenza è una coppia di valori dello stesso tipo 
 type Dependence a = (a,a)
@@ -60,3 +62,16 @@ reachableSet vs dag = foldl' visit  [] vs
     visit vs x 
         | x `elem` vs = vs
         | otherwise = foldl' visit (x:vs) [ e | (e,e') <- dag, e' == x ]
+
+
+connecteds [] rs = ([],rs)
+connecteds (x:xs) rs = let 
+	(ys,rs') = partition (\(x',y') -> x == x' || x == y') rs
+	xs' = filter (/= x) . concatMap (\(x,y) -> [x,y]) $ ys
+	(ns,rs'') = connecteds (nub $ xs ++ xs') rs'
+	in   (x:ns,rs'')
+
+isles [] = []
+isles ((x,y):rs) = let
+	(i,rs') = connecteds [x] $ (x,y):rs
+	in (i:) $ isles rs'

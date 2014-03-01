@@ -39,7 +39,18 @@ instance Binary Synth where
                         'c' -> KnobI `fmap` get
 
 type instance SocketName Synth = String 
-data Control = Intero | Decimale
+data Control = Intero | Decimale deriving (Eq)
+
+instance Binary Control where
+        put (Intero) = put 'a'
+        put (Decimale) = put 'b'
+        get = do
+                x <- get
+                case x of 
+                        'a' -> return Intero
+                        'b' -> return Decimale
+
+
 
 type instance ControlName Synth = Control
 
@@ -47,18 +58,19 @@ type instance ControlName Synth = Control
 basePattern  = Object 
 		(M.singleton 0 (SInput (-0.1,0.5) (0.5,0.5) ["pattern"]))
 		(M.singleton 0 (SOutput (1.1,0.5) (0.5,0.5) "pattern" ))
-		(M.fromList $ zip [0..] [SControl (x,0.5) (0.5,0.5) Intero | x <- [0.1,0.2..0.9]])
+		(M.fromList $ zip [0..7] [SControl (0.1,x) (0.5,0.5) Intero | x <- [0.1,0.2..0.9]] 
+			 )
 		(Pattern )
 
 baseSynth = Object
 		(M.singleton 0 (SInput (-0.1,0.5) (0.5,0.5) ["pattern"]))
 		M.empty 
-		(M.fromList $ zip [0..] [SControl (x,0.5) (0.5,0.5) Intero | x <- [0.5]])		
+		(M.fromList $ zip [0..] [SControl (0.1,x) (0.5,0.5) Intero | x <- [0.5]])		
 		(Synth)
 baseKnobI n = Object
 		M.empty
 		M.empty 
-		(M.fromList $ zip [0..] [SControl (x,0.5) (0.5,0.5) Intero | x <- [0.5]])		
+		(M.fromList $ zip [0..] [SControl (1,x) (0.5,0.5) Intero | x <- [0.5]])		
 		(KnobI n)
 
 		
@@ -83,7 +95,7 @@ setSynth _ x = return x
 
 
 
-rbe (SInput (realToFrac -> x,realToFrac -> y) c _) = renderPrimitive LineLoop $ do
+rbe (SInput (realToFrac -> x,realToFrac -> y) c _) = renderPrimitive Quads $ do
 		vertex (Vertex2 (x - 0.05) (y - 0.05) :: Vertex2 GLfloat)
 		vertex (Vertex2 (x + 0.05) (y - 0.05) :: Vertex2 GLfloat)
 		vertex (Vertex2 (x + 0.05) (y + 0.05) :: Vertex2 GLfloat)
@@ -104,6 +116,12 @@ rbe (SControl (realToFrac -> x,realToFrac -> y) c _ ) = do
 
 renderSynth :: Object Synth -> IO ()
 renderSynth (Object is os cs (Pattern ))  = do
+			color (Color4 0.1 0.1 0.1 1:: Color4 GLfloat)
+			forM_ (M.elems is) rbe
+			forM_ (M.elems os) rbe
+			forM_ (M.elems cs) rbe
+
+
 			color (Color4 0.8 0.9 1 0.1:: Color4 GLfloat)
 			forM_ [(0.1,0.1), (0.9,0.1),(0.9,0.9),(0.1,0.9)] $ \(xc,yc) -> 
 				renderPrimitive Polygon $ forM_ [0,0.1.. 2*pi] $ \a -> do
@@ -115,6 +133,7 @@ renderSynth (Object is os cs (Pattern ))  = do
 			renderPrimitive Quads $ do
                                 vertex (Vertex2 0.1 0 :: Vertex2 GLfloat)
                                 vertex (Vertex2 0.9 0 :: Vertex2 GLfloat)
+				color (Color4 0.8 0.5 1 0.1:: Color4 GLfloat)
                                 vertex (Vertex2 0.9 1 :: Vertex2 GLfloat)
                                 vertex (Vertex2 0.1 1 :: Vertex2 GLfloat)
 			renderPrimitive Quads $ do
@@ -122,15 +141,16 @@ renderSynth (Object is os cs (Pattern ))  = do
                                 vertex (Vertex2 1 0.1 :: Vertex2 GLfloat)
                                 vertex (Vertex2 1 0.9 :: Vertex2 GLfloat)
                                 vertex (Vertex2 0 0.9 :: Vertex2 GLfloat)
-
-			forM_ (M.elems is) rbe
-			forM_ (M.elems os) rbe
-			forM_ (M.elems cs) rbe
 
 				
 renderSynth (Object is os cs (Synth))  = do
 			polygonSmooth $= Enabled
 			lineSmooth $= Enabled
+			color (Color4 0.1 0.1 0.1 1:: Color4 GLfloat)
+			forM_ (M.elems is) rbe
+			forM_ (M.elems os) rbe
+			forM_ (M.elems cs) rbe
+
 			color (Color4 0.4 0.9 0.9 0.1:: Color4 GLfloat)
 			forM_ [(0.1,0.1), (0.9,0.1),(0.9,0.9),(0.1,0.9)] $ \(xc,yc) -> 
 				renderPrimitive Polygon $ forM_ [0,0.1.. 2*pi] $ \a -> do
@@ -148,30 +168,30 @@ renderSynth (Object is os cs (Synth))  = do
                                 vertex (Vertex2 1 0.1 :: Vertex2 GLfloat)
                                 vertex (Vertex2 1 0.9 :: Vertex2 GLfloat)
                                 vertex (Vertex2 0 0.9 :: Vertex2 GLfloat)
-			forM_ (M.elems is) rbe
-			forM_ (M.elems os) rbe
 
-			forM_ (M.elems cs) rbe
+
 renderSynth (Object is os cs (KnobI v'))  = do
 			polygonSmooth $= Enabled
+			lineSmooth $= Enabled
+			color (Color4 0.1 0.1 0.1 1:: Color4 GLfloat)
+			forM_ (M.elems is) rbe
+			forM_ (M.elems os) rbe
+			forM_ (M.elems cs) rbe
+
 			let 	x1 = 1/4
 				x2 = 3/4
 				v = fromIntegral v' / 100 * 0.7
 			color (Color4 0.3 0.4 0.5 0.3:: Color4 GLfloat)
-			renderNumberPosWH 0.5 0.5 (x2) (0.8) (1/8) (0.1) $  v'
+			renderNumberPosWH 0.5 0.5 (0.85) 0.1 (0.05) (0.7) $  v'
 				
 			color (Color4 0.6 0.7 0.8 0.1:: Color4 GLfloat)
 			renderPrimitive Quads $ do
 				-- mcolor p 2 3 4 1
-				vertex (Vertex2 x1 0.05 :: Vertex2 GLfloat)
-				vertex (Vertex2 x2  0.05 :: Vertex2 GLfloat)
+				vertex (Vertex2 0.05 x1 :: Vertex2 GLfloat)
+				vertex (Vertex2 0.05 x2:: Vertex2 GLfloat)
 				-- mcolor p 4 3 2 1
-				vertex (Vertex2 x2 (0.05 + realToFrac v) :: Vertex2 GLfloat)
-				vertex (Vertex2 x1 (0.05 + realToFrac v) :: Vertex2 GLfloat)
-			lineSmooth $= Enabled
-			color (Color4 0.6 0.7 0.8 0.1:: Color4 GLfloat)
-			renderNumberPosWH 0.5 0.5 (0.9) (0.5) (1/20) (1/10) $ v'
-			-- renderNumberPosWH 0.5 0.5 0.1 0.5 (1/20) (1/10) $ fromIntegral (v M.! 0)
+				vertex (Vertex2 (0.05 + realToFrac v) x2:: Vertex2 GLfloat)
+				vertex (Vertex2 (0.05 + realToFrac v) x1:: Vertex2 GLfloat)
 			color (Color4 0.4 0.9 0.9 0.1:: Color4 GLfloat)
 			forM_ [(0.1,0.1), (0.9,0.1),(0.9,0.9),(0.1,0.9)] $ \(xc,yc) -> 
 				renderPrimitive Polygon $ forM_ [0,0.1.. 2*pi] $ \a -> do
@@ -189,20 +209,17 @@ renderSynth (Object is os cs (KnobI v'))  = do
                                 vertex (Vertex2 1 0.1 :: Vertex2 GLfloat)
                                 vertex (Vertex2 1 0.9 :: Vertex2 GLfloat)
                                 vertex (Vertex2 0 0.9 :: Vertex2 GLfloat)
-			forM_ (M.elems is) rbe
-			forM_ (M.elems cs) rbe
 
 
 graph :: Graph Synth
 graph = Graph (M.fromList $ 
 	[ (0,(Affine (0.5,0.5) (0.1,0.06),basePattern))
 	, (1,(Affine (0.5,0.5) (0.06,0.1),baseSynth))
-	, (2,(Affine (0.5,0.5) (0.06,0.1),baseKnobI 50))
+	, (2,(Affine (0.5,0.5) (0.1,0.01),baseKnobI 50))
 	]) M.empty M.empty
 
 main = do
-        -- g <- decodeFile "prova.rythms" 
-        -- ref <- newTVarIO g
-	ref <- newTVarIO (singleton graph)
+        ref <- decodeFile "prova.rythms" >>= newTVarIO 
+	-- ref <- newTVarIO (singleton graph)
 	run setSynth scrollSynth renderSynth ref
         atomically (readTVar ref) >>= encodeFile "prova.rythms"

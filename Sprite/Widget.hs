@@ -26,6 +26,8 @@ cursor = view focus
 toGLfloat :: Double -> GLfloat
 toGLfloat = realToFrac
 
+
+-- | projection aware rendering of an object
 renderAGL :: (Object a -> IO ()) -> RenderObject a IO 
 renderAGL f x (Affine (toGLfloat -> cx,toGLfloat -> cy) (toGLfloat -> sx,toGLfloat -> sy)) = do
 	preservingMatrix $ do
@@ -64,16 +66,19 @@ renderEdgeGL' (p1,c1) (p2,c2) = do
 
    let linear x y i = x + i * (y - x)
 
-   renderPrimitive LineStrip $ forM_ [0 :: GLfloat ,1/60 .. 1] $ \i -> do
+   renderPrimitive Lines $ do
+	vertex $ Vertex3 x1 y1 0 
+	vertex $ Vertex3 x y 0 
+	-- forM_ [0 :: GLfloat ,1/60 .. 1] $ \i -> do
 	-- color (Color4 (linear p1 p2 i) (linear p1 p2  i) (linear p1 p2 i) 0.1 :: Color4 GLfloat)
-        evalCoord1 i
+        -- evalCoord1 i
 
 addGraph ref x = modifyTVar ref $ insertRight  x 
 
 graphing 
 	:: (Eq (SocketName a), Eq (ControlName a))
 	=> (Point -> a -> STM a) -- react to a left click inside the widget 
-	-> (ScrollDirection -> Point -> a -> STM a)  -- react to a scrolling inside a widget
+	-> (ScrollDirection -> Point -> a  -> STM a)  -- react to a scrolling inside a widget
 	-> (Object a  -> IO ())  -- GL renders an Object a
 	->  TVar (PointedList (Graph a)) -- shared state of the graph, with undo and redo
 	-> IO GLDrawingArea
