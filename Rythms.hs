@@ -25,24 +25,9 @@ import Data.Binary
 
 import Sprite.OpenGlDigits
 
-data Synth = Pattern  | Synth | KnobI Int  deriving Show
-
-instance Binary Synth where
-        put (Pattern) = put 'a'
-        put (Synth) = put 'b'
-        put (KnobI x) = put 'c' >> put x
-        get = do
-                x <- get
-                case x of 
-                        'a' -> return Pattern
-                        'b' -> return Synth 
-                        'c' -> KnobI `fmap` get
-
-type instance SocketName Synth = String 
-data Control = Intero | Decimale deriving (Eq)
-
+data Control = Intero | Decimale  deriving (Eq)
 instance Binary Control where
-        put (Intero) = put 'a'
+        put (Intero) = put 'a' 
         put (Decimale) = put 'b'
         get = do
                 x <- get
@@ -50,9 +35,55 @@ instance Binary Control where
                         'a' -> return Intero
                         'b' -> return Decimale
 
+data Value = VIntero Int | VDecimale Double
 
 
 type instance ControlName Synth = Control
+
+
+type instance ControlValue Synth = Value
+
+data Synth = Pattern  (M.Map (ISocket Duplex) Int) | Synth Int | KnobI Int
+le :: LensesOf Synth
+
+le (Pattern _) n = lens f g where
+	f (Pattern x) = VIntero $ x M.! n
+	f _ = error "graph messed up"
+	g (Pattern x) (VIntero y) = Pattern $ M.adjust (const y) n $ x 
+	g _ _ = error "graph messed up"
+
+le (Synth _) 0 = lens f g where
+	f (Synth x) = VIntero $ x
+	f _ = error "graph messed up"
+	g (Synth x) (VIntero y) = Synth y 
+	g _ _  = error "graph messed up"
+
+le (Synth _) _ = error "graph messed up"
+le (KnobI _) 0 = lens f g where
+	f (KnobI x) =  VIntero $ x
+	f _ = error "graph messed up"
+	g (KnobI x) (VIntero y) = KnobI y 
+	g _ _  = error "graph messed up"
+
+le (KnobI _) _ = error "graph messed up"
+
+instance Binary Synth where
+        put (Pattern x) = put 'a' >> put x
+        put (Synth x) = put 'b' >> put x
+        put (KnobI x) = put 'c' >> put x
+        get = do
+                x <- get
+                case x of 
+                        'a' -> Pattern `fmap` get
+                        'b' -> Synth `fmap` get
+                        'c' -> KnobI `fmap` get
+
+type instance SocketName Synth = String 
+
+
+
+
+
 
 
 basePattern  = Object 
@@ -60,13 +91,13 @@ basePattern  = Object
 		(M.singleton 0 (SOutput (1.1,0.5) (0.5,0.5) "pattern" ))
 		(M.fromList $ zip [0..7] [SControl (0.1,x) (0.5,0.5) Intero | x <- [0.1,0.2..0.9]] 
 			 )
-		(Pattern )
+		(Pattern $ M.fromList $ zip [0..7] $ repeat 0)
 
 baseSynth = Object
 		(M.singleton 0 (SInput (-0.1,0.5) (0.5,0.5) ["pattern"]))
 		M.empty 
 		(M.fromList $ zip [0..] [SControl (0.1,x) (0.5,0.5) Intero | x <- [0.5]])		
-		(Synth)
+		(Synth 0)
 baseKnobI n = Object
 		M.empty
 		M.empty 
@@ -115,7 +146,7 @@ rbe (SControl (realToFrac -> x,realToFrac -> y) c _ ) = do
 			vertex (Vertex2 (x - 0.05) (y + 0.05) :: Vertex2 GLfloat)
 
 renderSynth :: Object Synth -> IO ()
-renderSynth (Object is os cs (Pattern ))  = do
+renderSynth (Object is os cs (Pattern n ))  = do
 			color (Color4 0.1 0.1 0.1 1:: Color4 GLfloat)
 			forM_ (M.elems is) rbe
 			forM_ (M.elems os) rbe
@@ -143,7 +174,7 @@ renderSynth (Object is os cs (Pattern ))  = do
                                 vertex (Vertex2 0 0.9 :: Vertex2 GLfloat)
 
 				
-renderSynth (Object is os cs (Synth))  = do
+renderSynth (Object is os cs (Synth n))  = do
 			polygonSmooth $= Enabled
 			lineSmooth $= Enabled
 			color (Color4 0.1 0.1 0.1 1:: Color4 GLfloat)
@@ -216,10 +247,10 @@ graph = Graph (M.fromList $
 	[ (0,(Affine (0.5,0.5) (0.1,0.06),basePattern))
 	, (1,(Affine (0.5,0.5) (0.06,0.1),baseSynth))
 	, (2,(Affine (0.5,0.5) (0.1,0.01),baseKnobI 50))
-	]) M.empty M.empty
+	]) M.empty M.empty M.empty []
 
 main = do
-        ref <- decodeFile "prova.rythms" >>= newTVarIO 
-	-- ref <- newTVarIO (singleton graph)
-	run setSynth scrollSynth renderSynth ref
+        -- ref <- decodeFile "prova.rythms" >>= newTVarIO 
+	ref <- newTVarIO (singleton graph)
+	run le setSynth scrollSynth renderSynth ref
         atomically (readTVar ref) >>= encodeFile "prova.rythms"

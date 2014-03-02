@@ -166,7 +166,7 @@ type EdgeLens a b c = Lens' (Edge a c) (a b)
 newtype IObject = IObject Int  deriving (Num,Ord,Eq, Enum, Show, Binary)
 
 -- indexing a socket 
-data ISocketObj (a::Versus) = ISocketObj 
+data ISocketObj a = ISocketObj 
 	{	_isobject  :: IObject 
 	,	_isocket   :: ISocket a
 	} deriving (Eq,Ord)
@@ -205,7 +205,9 @@ lensAt  x g = let
 	y = snd $ (g ^. vertexes) M.! (x ^. isobject)
 	in (view object y,x ^. isocket)
 
-type LensesOf a = a -> ISocket Duplex -> Lens' a (ControlName a) 
+type family ControlValue a 
+type LensesOf a = a -> ISocket Duplex -> Lens' a (ControlValue a) 
+
 electrical' 
      :: forall a . LensesOf a
      -> ISocketObj 'Duplex
@@ -230,17 +232,16 @@ electrical f x g = let
 	in case is of 
 		[] -> g
 		[xs] -> electrical' f x (delete x xs) g 
-{-
 electricalO :: forall a . LensesOf a
      -> IObject
      -> Graph a
      -> Graph a
-electricalO i g = let
-	is = filter (any ((== i) . view isobject))) $ g ^. gisles
-	in case is of 
-		[] -> g
-		[xs] -> electrical' f x (delete x xs) g 
--}
+electricalO f i g = let
+	-- select touched groups
+	js :: [([ISocketObj Duplex],[ISocketObj Duplex])]
+	js = map (partition ((== i) . view isobject)) $ g ^. gisles
+	is = map (head *** id) . filter (not . null . fst) $ js  
+	in foldr  (uncurry $ electrical' f) g is 
 
 
 updateIsles :: Graph a -> Graph a
@@ -345,10 +346,10 @@ nearestVertexes p g = map snd . sortBy (comparing fst) $
 ----- vertexes -------------
 
 
-sendToVertex :: (Functor m, Applicative m) => Point -> Graph a -> (Point -> a -> m a) -> m (Graph a)
-sendToVertex p g f = case nearestVertexes p g of 
+sendToVertex :: (Functor m, Applicative m) => LensesOf a -> Point -> Graph a -> (Point -> a -> m a) -> m (Graph a)
+sendToVertex k p g f = case nearestVertexes p g of 
 	[] -> pure g
-	io : _ -> let Just a = g ^? vertexes . at io . traverse . _1 in
+	io : _ -> let Just a = g ^? vertexes . at io . traverse . _1 in fmap (electricalO k io) $ 
 		vertexes %%~ (ix io (_2 . object %%~ f (affineBack (glass p a) p))) $ g 
 
 
@@ -547,7 +548,7 @@ modifyEdge p g = case sortEdges realizeEdgeDep edgesDep p g of
 		[] -> Nothing
 		io: _ -> supportJumper (snd io) g p
 	io':_ ->  case sortEdges realizeEdgeJumper edgesJumper p g of
-		[] -> supportDep (snd io) g p
+		[] -> supportDep (snd io') g p
 		io: _ -> case fst io > fst io' of
 			True -> supportDep (snd io') g p
 			False -> supportJumper (snd io) g p

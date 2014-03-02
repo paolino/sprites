@@ -37,9 +37,8 @@ renderAGL f x (Affine (toGLfloat -> cx,toGLfloat -> cy) (toGLfloat -> sx,toGLflo
 			translate (Vector3 (-0.5) (-0.5) (0 :: GLfloat))
 			f x 
 
-renderEdgeGL :: RenderEdge a IO
-renderEdgeGL (Bi (x,y)) = renderEdgeGL' (view point x, view center x) (view point y , view center y)
-renderEdgeGL (Dir x y) = renderEdgeGL' (view point x, view  center x) (view point y, view  center y)
+renderEdgeGL :: RenderEdge a IO b
+renderEdgeGL (Edge x y) = renderEdgeGL' (view point x, view  center x) (view point y, view  center y)
 
 renderEdgeGL' (p1,c1) (p2,c2) = do
    renderPrimitive Points $ return () -- bug ??!?
@@ -77,12 +76,13 @@ addGraph ref x = modifyTVar ref $ insertRight  x
 
 graphing 
 	:: (Eq (SocketName a), Eq (ControlName a))
-	=> (Point -> a -> STM a) -- react to a left click inside the widget 
+	=> LensesOf a 
+	-> (Point -> a -> STM a) -- react to a left click inside the widget 
 	-> (ScrollDirection -> Point -> a  -> STM a)  -- react to a scrolling inside a widget
 	-> (Object a  -> IO ())  -- GL renders an Object a
 	->  TVar (PointedList (Graph a)) -- shared state of the graph, with undo and redo
 	-> IO GLDrawingArea
-graphing  innerclick innerscroll renderA ref = do
+graphing  le innerclick innerscroll renderA ref = do
   connecting <- newTVarIO Nothing
   coo <- newTVarIO (0,0)
   size <- newTVarIO  (1,1)
@@ -95,7 +95,7 @@ graphing  innerclick innerscroll renderA ref = do
 	  g' <- case conn of 
 		Nothing -> return g
 		Just f -> atomically (f c) 
-	  renderGraph renderEdgeGL (renderAGL renderA) g' c 
+	  renderGraph renderEdgeGL renderEdgeGL (renderAGL renderA) g' c 
 
   widgetSetEvents connects [AllEventsMask]
   on connects buttonPressEvent $ do
@@ -114,7 +114,7 @@ graphing  innerclick innerscroll renderA ref = do
 					True -> addGraph ref (deleteEdge c g)
 					False -> case Shift `elem` ms of
 						False -> writeTVar connecting . Just $ return . moveVertex c g
-						True -> writeTVar connecting . Just $ \c -> sendToVertex c g innerclick
+						True -> writeTVar connecting . Just $ \c -> sendToVertex le c g innerclick
 				RightButton -> writeTVar connecting $ fmap (fmap return) $ newEdge c g 
 				MiddleButton -> writeTVar connecting $ fmap (fmap return) $ modifyEdge c g  
 				_ -> return ()
@@ -131,7 +131,7 @@ graphing  innerclick innerscroll renderA ref = do
 		case ms == [Control] of
 			True -> addGraph ref $ scaleYVertex c g f
 			False -> case ms == [Shift] of 
-				True -> sendToVertex c g (innerscroll d) >>= addGraph ref 
+				True -> sendToVertex le c g (innerscroll d) >>= addGraph ref 
 				False -> addGraph ref . flip (scaleXVertex c) f $ scaleYVertex c g f
 			
 	return True

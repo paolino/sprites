@@ -14,13 +14,14 @@ import Sprite.Logic
 import Sprite.GL
 
 run  :: (Eq (SocketName a), Eq (ControlName a)) =>
-     (Point -> a -> STM a)
+     LensesOf a
+     -> (Point -> a -> STM a)
      -> (ScrollDirection -> Point -> a -> STM a)
      -> (Object a -> IO ())
      -> TVar (PointedList (Graph a))
      -> IO ()
 
-run setx scrollx renderx ref = do
+run le setx scrollx renderx ref = do
   initGUI
   bootGL
   window <- windowNew
@@ -28,7 +29,7 @@ run setx scrollx renderx ref = do
   set window [ containerBorderWidth := 8,
                    windowTitle := "tracks widget" ]
   hb <- hBoxNew False 1
-  connects <- graphing setx scrollx renderx ref 
+  connects <- graphing le setx scrollx renderx ref 
   set window [containerChild := connects] 
   widgetShowAll window
   dat <- widgetGetDrawWindow $ window
