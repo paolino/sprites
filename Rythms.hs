@@ -10,7 +10,7 @@ import Control.Concurrent
 
 import Graphics.UI.Gtk hiding (Point,Signal, Object,get)
 import Graphics.UI.Gtk.OpenGL  hiding (get)
-import Graphics.Rendering.OpenGL  hiding (get,Projection)
+import Graphics.Rendering.OpenGL  hiding (get,Projection,Point)
 import qualified Data.Map as M
 import Control.Monad
 import Sprite.Logic
@@ -22,50 +22,12 @@ import Data.List.PointedList
 
 import Sprite.GUI
 import Data.Binary
+import Sprite.D2
 
 import Sprite.OpenGlDigits
 
-data Control = Intero | Decimale  deriving (Eq)
-instance Binary Control where
-        put (Intero) = put 'a' 
-        put (Decimale) = put 'b'
-        get = do
-                x <- get
-                case x of 
-                        'a' -> return Intero
-                        'b' -> return Decimale
 
-data Value = VIntero Int | VDecimale Double
-
-
-type instance ControlName Synth = Control
-
-
-type instance ControlValue Synth = Value
-
-data Synth = Pattern  (M.Map (ISocket Duplex) Int) | Synth Int | KnobI Int
-le :: LensesOf Synth
-
-le (Pattern _) n = lens f g where
-	f (Pattern x) = VIntero $ x M.! n
-	f _ = error "graph messed up"
-	g (Pattern x) (VIntero y) = Pattern $ M.adjust (const y) n $ x 
-	g _ _ = error "graph messed up"
-
-le (Synth _) 0 = lens f g where
-	f (Synth x) = VIntero $ x
-	f _ = error "graph messed up"
-	g (Synth x) (VIntero y) = Synth y 
-	g _ _  = error "graph messed up"
-
-le (Synth _) _ = error "graph messed up"
-le (KnobI _) 0 = lens f g where
-	f (KnobI x) =  VIntero $ x
-	f _ = error "graph messed up"
-	g (KnobI x) (VIntero y) = KnobI y 
-	g _ _  = error "graph messed up"
-
-le (KnobI _) _ = error "graph messed up"
+data Synth = Pattern  (M.Map Int Int) | Synth Int | KnobI Int
 
 instance Binary Synth where
         put (Pattern x) = put 'a' >> put x
@@ -78,30 +40,18 @@ instance Binary Synth where
                         'b' -> Synth `fmap` get
                         'c' -> KnobI `fmap` get
 
-type instance SocketName Synth = String 
-
-
-
-
-
-
-
 basePattern  = Object 
-		(M.singleton 0 (SInput (-0.1,0.5) (0.5,0.5) ["pattern"]))
-		(M.singleton 0 (SOutput (1.1,0.5) (0.5,0.5) "pattern" ))
-		(M.fromList $ zip [0..7] [SControl (0.1,x) (0.5,0.5) Intero | x <- [0.1,0.2..0.9]] 
-			 )
+		(SInput "pattern" (-0.1,0.5) : [SInput "control" (0.1,x) | x <- [0.1,0.2..0.9]])
+		[SOutput "pattern" (1.1,0.5)]
 		(Pattern $ M.fromList $ zip [0..7] $ repeat 0)
 
 baseSynth = Object
-		(M.singleton 0 (SInput (-0.1,0.5) (0.5,0.5) ["pattern"]))
-		M.empty 
-		(M.fromList $ zip [0..] [SControl (0.1,x) (0.5,0.5) Intero | x <- [0.5]])		
+		[SInput "pattern" (-0.1,0.5) ,SInput "control" (0.1,0.5) ]
+		[]
 		(Synth 0)
 baseKnobI n = Object
-		M.empty
-		M.empty 
-		(M.fromList $ zip [0..] [SControl (1,x) (0.5,0.5) Intero | x <- [0.5]])		
+                []
+		[SOutput "control" (1,0.5) ]		
 		(KnobI n)
 
 		
@@ -126,32 +76,20 @@ setSynth _ x = return x
 
 
 
-rbe (SInput (realToFrac -> x,realToFrac -> y) c _) = renderPrimitive Quads $ do
-		vertex (Vertex2 (x - 0.05) (y - 0.05) :: Vertex2 GLfloat)
-		vertex (Vertex2 (x + 0.05) (y - 0.05) :: Vertex2 GLfloat)
-		vertex (Vertex2 (x + 0.05) (y + 0.05) :: Vertex2 GLfloat)
-		vertex (Vertex2 (x - 0.05) (y + 0.05) :: Vertex2 GLfloat)
-rbe (SOutput (realToFrac -> x,realToFrac -> y) c _ ) = do 
+rbe (SInput _ (realToFrac -> x,realToFrac -> y)) = renderPrimitive Quads $ do
+		vertex (Vertex2 (x - 0.005) (y - 0.005) :: Vertex2 GLfloat)
+		vertex (Vertex2 (x + 0.005) (y - 0.005) :: Vertex2 GLfloat)
+		vertex (Vertex2 (x + 0.005) (y + 0.005) :: Vertex2 GLfloat)
+		vertex (Vertex2 (x - 0.005) (y + 0.005) :: Vertex2 GLfloat)
+rbe (SOutput _ (realToFrac -> x,realToFrac -> y)) = do 
 		renderPrimitive LineLoop $ do
-			vertex (Vertex2 (x - 0.05) (y - 0.05) :: Vertex2 GLfloat)
-			vertex (Vertex2 (x + 0.05) (y - 0.05) :: Vertex2 GLfloat)
-			vertex (Vertex2 (x + 0.05) (y + 0.05) :: Vertex2 GLfloat)
-			vertex (Vertex2 (x - 0.05) (y + 0.05) :: Vertex2 GLfloat)
+			vertex (Vertex2 (x - 0.005) (y - 0.005) :: Vertex2 GLfloat)
+			vertex (Vertex2 (x + 0.005) (y - 0.005) :: Vertex2 GLfloat)
+			vertex (Vertex2 (x + 0.005) (y + 0.005) :: Vertex2 GLfloat)
+			vertex (Vertex2 (x - 0.005) (y + 0.005) :: Vertex2 GLfloat)
 
-rbe (SControl (realToFrac -> x,realToFrac -> y) c _ ) = do 
-		renderPrimitive LineLoop $ do
-			vertex (Vertex2 (x - 0.05) (y - 0.05) :: Vertex2 GLfloat)
-			vertex (Vertex2 (x + 0.05) (y - 0.05) :: Vertex2 GLfloat)
-			vertex (Vertex2 (x + 0.05) (y + 0.05) :: Vertex2 GLfloat)
-			vertex (Vertex2 (x - 0.05) (y + 0.05) :: Vertex2 GLfloat)
-
-renderSynth :: Object Synth -> IO ()
-renderSynth (Object is os cs (Pattern n ))  = do
-			color (Color4 0.1 0.1 0.1 1:: Color4 GLfloat)
-			forM_ (M.elems is) rbe
-			forM_ (M.elems os) rbe
-			forM_ (M.elems cs) rbe
-
+renderSynth :: Synth -> IO ()
+renderSynth (Pattern n)  = do
 
 			color (Color4 0.8 0.9 1 0.1:: Color4 GLfloat)
 			forM_ [(0.1,0.1), (0.9,0.1),(0.9,0.9),(0.1,0.9)] $ \(xc,yc) -> 
@@ -174,14 +112,9 @@ renderSynth (Object is os cs (Pattern n ))  = do
                                 vertex (Vertex2 0 0.9 :: Vertex2 GLfloat)
 
 				
-renderSynth (Object is os cs (Synth n))  = do
+renderSynth (Synth n)  = do
 			polygonSmooth $= Enabled
 			lineSmooth $= Enabled
-			color (Color4 0.1 0.1 0.1 1:: Color4 GLfloat)
-			forM_ (M.elems is) rbe
-			forM_ (M.elems os) rbe
-			forM_ (M.elems cs) rbe
-
 			color (Color4 0.4 0.9 0.9 0.1:: Color4 GLfloat)
 			forM_ [(0.1,0.1), (0.9,0.1),(0.9,0.9),(0.1,0.9)] $ \(xc,yc) -> 
 				renderPrimitive Polygon $ forM_ [0,0.1.. 2*pi] $ \a -> do
@@ -201,14 +134,9 @@ renderSynth (Object is os cs (Synth n))  = do
                                 vertex (Vertex2 0 0.9 :: Vertex2 GLfloat)
 
 
-renderSynth (Object is os cs (KnobI v'))  = do
+renderSynth (KnobI v')  = do
 			polygonSmooth $= Enabled
 			lineSmooth $= Enabled
-			color (Color4 0.1 0.1 0.1 1:: Color4 GLfloat)
-			forM_ (M.elems is) rbe
-			forM_ (M.elems os) rbe
-			forM_ (M.elems cs) rbe
-
 			let 	x1 = 1/4
 				x2 = 3/4
 				v = fromIntegral v' / 100 * 0.7
@@ -247,10 +175,10 @@ graph = Graph (M.fromList $
 	[ (0,(Affine (0.5,0.5) (0.1,0.06),basePattern))
 	, (1,(Affine (0.5,0.5) (0.06,0.1),baseSynth))
 	, (2,(Affine (0.5,0.5) (0.1,0.01),baseKnobI 50))
-	]) M.empty M.empty M.empty []
+	]) M.empty
 
 main = do
-        -- ref <- decodeFile "prova.rythms" >>= newTVarIO 
-	ref <- newTVarIO (singleton graph)
-	run le setSynth scrollSynth renderSynth ref
+        ref <- decodeFile "prova.rythms" >>= newTVarIO 
+	--ref <- newTVarIO (singleton graph)
+	run setSynth scrollSynth renderSynth rbe rbe ref
         atomically (readTVar ref) >>= encodeFile "prova.rythms"

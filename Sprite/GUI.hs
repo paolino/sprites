@@ -1,5 +1,5 @@
 
-{-# LANGUAGE ViewPatterns, GADTs, FlexibleContexts  #-}
+{-# LANGUAGE ViewPatterns, GADTs, FlexibleContexts, DataKinds  #-}
 
 module Sprite.GUI where
   
@@ -12,16 +12,17 @@ import Data.List.PointedList
 import Sprite.Widget (graphing) 
 import Sprite.Logic
 import Sprite.GL
+import Sprite.D2
 
-run  :: (Eq (SocketName a), Eq (ControlName a)) =>
-     LensesOf a
-     -> (Point -> a -> STM a)
+run  :: (Point -> a -> STM a)
      -> (ScrollDirection -> Point -> a -> STM a)
-     -> (Object a -> IO ())
+     -> (a -> IO ())
+     -> RenderSocket IO Input
+     -> RenderSocket IO Output
      -> TVar (PointedList (Graph a))
      -> IO ()
 
-run le setx scrollx renderx ref = do
+run setx scrollx renderx renderSI renderSO ref = do
   initGUI
   bootGL
   window <- windowNew
@@ -29,7 +30,7 @@ run le setx scrollx renderx ref = do
   set window [ containerBorderWidth := 8,
                    windowTitle := "tracks widget" ]
   hb <- hBoxNew False 1
-  connects <- graphing le setx scrollx renderx ref 
+  connects <- graphing setx scrollx renderx renderSI renderSO ref 
   set window [containerChild := connects] 
   widgetShowAll window
   dat <- widgetGetDrawWindow $ window

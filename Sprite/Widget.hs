@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns, GADTs, FlexibleContexts  #-}
+{-# LANGUAGE ViewPatterns, GADTs, FlexibleContexts, DataKinds  #-}
 
 module Sprite.Widget where
 
@@ -17,6 +17,7 @@ import Data.List.PointedList
 	
 import Sprite.GL (mkCanva)
 import Sprite.Logic
+import Sprite.D2
 import Control.Lens (view, alongside)
 
 
@@ -28,8 +29,8 @@ toGLfloat = realToFrac
 
 
 -- | projection aware rendering of an object
-renderAGL :: (Object a -> IO ()) -> RenderObject a IO 
-renderAGL f x (Affine (toGLfloat -> cx,toGLfloat -> cy) (toGLfloat -> sx,toGLfloat -> sy)) = do
+renderAGL :: (a -> IO ()) -> RenderObject IO a
+renderAGL f (Affine (toGLfloat -> cx,toGLfloat -> cy) (toGLfloat -> sx,toGLfloat -> sy)) x = do
 	preservingMatrix $ do
 		translate (Vector3 cx cy 0)
 		scale sx sy 1
@@ -37,52 +38,25 @@ renderAGL f x (Affine (toGLfloat -> cx,toGLfloat -> cy) (toGLfloat -> sx,toGLflo
 			translate (Vector3 (-0.5) (-0.5) (0 :: GLfloat))
 			f x 
 
-renderEdgeGL :: RenderEdge a IO b
-renderEdgeGL (Edge x y) = renderEdgeGL' (view point x, view  center x) (view point y, view  center y)
+renderEdgeGL :: RenderEdge IO 
+renderEdgeGL (Edge x y) = renderEdgeGL' (view point x) (view point y)
 
-renderEdgeGL' (p1,c1) (p2,c2) = do
-   renderPrimitive Points $ return () -- bug ??!?
-   color (Color4 0.3 0.4 0.5 1 :: Color4 GLfloat)
-   let	 v1 = fst (c1 .-. p1) > 0 
-	 v2 = fst (c2 .-. p2) > 0
-	 (x,y) = (toGLfloat *** toGLfloat) p1 :: (GLfloat, GLfloat)
-	 (x1,y1) = (toGLfloat *** toGLfloat) p2 :: (GLfloat, GLfloat)	
-   let x' = if v1 && v2 then [min x x1 - 0.1]  else 
-		if not v1 &&  not v2 then [max x x1 + 0.1] else
-			if x < (x1 - 0.1) && not v1 then [(x1+x)/2 + 0.05,(x1 + x)/ 2 - 0.05] else
-				  if x1 < (x - 0.1) && not v2 then [(x1+x)/2 -0.05 ,(x1 + x)/ 2 + 0.05] else
-					if  not v1 then  [x + 0.1,x1 - 0.1] else
-						[x - 0.1, x1 + 0.1] 
-   m <- newMap1 (0, 1)  $ 
-	[ Vertex3 x y 0] ++
-	( do 
-		x <- x'
-		y' <- [y,y1]
-		[Vertex3 x y' 0]
-	) ++ [Vertex3 x1 y1 0 ]
-
-   map1 $= Just (m :: GLmap1 Vertex3 GLfloat)
-
-   let linear x y i = x + i * (y - x)
-
+renderEdgeGL' :: Point -> Point -> IO ()
+renderEdgeGL' (toGLfloat -> x,toGLfloat -> y) (toGLfloat -> x1,toGLfloat -> y1) = do 
    renderPrimitive Lines $ do
 	vertex $ Vertex3 x1 y1 0 
 	vertex $ Vertex3 x y 0 
-	-- forM_ [0 :: GLfloat ,1/60 .. 1] $ \i -> do
-	-- color (Color4 (linear p1 p2 i) (linear p1 p2  i) (linear p1 p2 i) 0.1 :: Color4 GLfloat)
-        -- evalCoord1 i
 
 addGraph ref x = modifyTVar ref $ insertRight  x 
-
 graphing 
-	:: (Eq (SocketName a), Eq (ControlName a))
-	=> LensesOf a 
-	-> (Point -> a -> STM a) -- react to a left click inside the widget 
+	:: (Point -> a -> STM a) -- react to a left click inside the widget 
 	-> (ScrollDirection -> Point -> a  -> STM a)  -- react to a scrolling inside a widget
-	-> (Object a  -> IO ())  -- GL renders an Object a
+	-> (a  -> IO ())  -- GL renders an Object a
+        -> RenderSocket IO Input
+        -> RenderSocket IO Output
 	->  TVar (PointedList (Graph a)) -- shared state of the graph, with undo and redo
 	-> IO GLDrawingArea
-graphing  le innerclick innerscroll renderA ref = do
+graphing  innerclick innerscroll renderA renderSI renderSO ref = do
   connecting <- newTVarIO Nothing
   coo <- newTVarIO (0,0)
   size <- newTVarIO  (1,1)
@@ -95,7 +69,7 @@ graphing  le innerclick innerscroll renderA ref = do
 	  g' <- case conn of 
 		Nothing -> return g
 		Just f -> atomically (f c) 
-	  renderGraph renderEdgeGL renderEdgeGL (renderAGL renderA) g' c 
+	  renderGraph renderEdgeGL renderSI renderSO (renderAGL renderA) g' c 
 
   widgetSetEvents connects [AllEventsMask]
   on connects buttonPressEvent $ do
@@ -114,7 +88,7 @@ graphing  le innerclick innerscroll renderA ref = do
 					True -> addGraph ref (deleteEdge c g)
 					False -> case Shift `elem` ms of
 						False -> writeTVar connecting . Just $ return . moveVertex c g
-						True -> writeTVar connecting . Just $ \c -> sendToVertex le c g innerclick
+						True -> writeTVar connecting . Just $ \c -> sendToVertex innerclick c g
 				RightButton -> writeTVar connecting $ fmap (fmap return) $ newEdge c g 
 				MiddleButton -> writeTVar connecting $ fmap (fmap return) $ modifyEdge c g  
 				_ -> return ()
@@ -131,7 +105,7 @@ graphing  le innerclick innerscroll renderA ref = do
 		case ms == [Control] of
 			True -> addGraph ref $ scaleYVertex c g f
 			False -> case ms == [Shift] of 
-				True -> sendToVertex le c g (innerscroll d) >>= addGraph ref 
+				True -> sendToVertex (innerscroll d) c g  >>= addGraph ref 
 				False -> addGraph ref . flip (scaleXVertex c) f $ scaleYVertex c g f
 			
 	return True
@@ -191,4 +165,3 @@ graphing  le innerclick innerscroll renderA ref = do
 	return True
   return connects			
 			
-
